@@ -1,0 +1,381 @@
+---
+title: "smart device"
+author: "kipngenokoech"
+date: "8/23/2021"
+output: 
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning=FALSE)
+```
+
+
+
+
+## ASK
+
+### About Bellabeat
+
+Bellabeat is a high-tech manufacturer of health-focused products for.Their mission is to become a major player in the  smart device production.
+They desire to find new opportunities to grow its business. For that reason, we are going to analyze information about its current users utilizing the products offered by the company (smart devices). The mission is to find trends in the data and make useful recommendations for the company.
+
+### Key Stakeholders
+
+* Urška Sršen: Bellabeat’s co-founder and Chief Creative Officer.
+* Sando Mur: Mathematician and Bellabeat’s co-founder.
+
+### Business task
+
+I will try to answer these questions:
+
+ * What are some trends in smart device usage?
+ * How could these trends apply to Bellabeat customers?
+ * How could these trends help influence Bellabeat marketing strategy
+
+## PREPARE
+This data set contains personal fitness tracker from thirty fitbit users.  It includes information about daily activity, steps, and heart rate that can be used to explore habits and patterns.
+
+
+
+### limitation
+
+Data was collected in the year 2016. Users' daily activities, fitness and sleeping habits, diet and food consumption may have changed since then, hence data may not be timely or relevant. Sample size of 33 female FitBit users is not representative of the entire female population and moreover weight data is only from 8 users. As data is collected in a survey, hence unable to ascertain the integrity or accuracy of data.
+
+
+## PROCESS
+
+### importing required libraries
+```{r}
+library(tidyverse)
+library(kableExtra)   # For viewing tables in an awesome way!
+library(scales)   # For transforming numbers in percentage
+library(highcharter) # Cool and interactive graphs
+library(RColorBrewer)  # Pallete colors
+
+```
+
+
+### importing data to our working directory
+
+```{r}
+daily_activity<-read.csv("dailyActivity_merged.csv")
+daily_calories<-read.csv("dailyCalories_merged.csv")
+daily_intensities<-read.csv("dailyIntensities_merged.csv")
+daily_steps<-read.csv("dailySteps_merged.csv")
+daily_sleep<-read.csv("sleepDay_merged.csv")
+weight_log<-read.csv("weightLogInfo_merged.csv")
+```
+
+### viewing datasets
+
+```{r}
+kbl(daily_activity[1:5, ], 'html', caption = 'Table 1: Daily activity') %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>% 
+  scroll_box(width = "100%")
+```
+
+```{r}
+kbl(daily_calories[1:7, ], 'html', caption = 'Table 2: Daily calories') %>% 
+kable_styling(bootstrap_options = c("striped", "hover"), 
+              full_width = F)
+```
+
+
+```{r}
+kbl(daily_steps[1:5, ], 'html', caption = 'Table 3: Daily steps') %>% 
+kable_styling(bootstrap_options = c("striped", "hover"), 
+              full_width = F)
+```
+
+```{r}
+kbl(daily_intensities[1:5, ], 'html', caption = 'Table 4: Daily intensities') %>%  
+  kable_styling(bootstrap_options = c("striped", "hover")) %>% 
+  scroll_box(width = "100%")  # Adding a scroll bar
+```
+
+```{r}
+kbl(daily_sleep[1:5, ], 'html', caption = 'Table 5: Daily sleep') %>% 
+kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+```
+```{r}
+kbl(weight_log[1:5, ], 'html', caption = 'Table 6: Weight info') %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+```
+### removing some datasets
+
+`Daily activity` already contains the information from `Daily calories`,`Daily step` and  `Daily intensities`.
+
+```{r}
+rm(daily_calories, daily_intensities, daily_steps)
+```
+
+
+### cleaning variables before merging
+Make them homogeneous and transform it to the right data type.
+
+```{r}
+daily_activity <- daily_activity %>% 
+  rename(Date = ActivityDate) %>% 
+  mutate(Date = as.Date(Date, format = "%m/%d/%y"))
+```
+
+```{r}
+daily_sleep <- daily_sleep %>% 
+  rename(Date = SleepDay) %>% 
+  mutate(Date = as.Date(Date, format = "%m/%d/%y"))
+```
+
+```{r}
+weight_log <- weight_log%>% 
+  select(-LogId) %>% 
+  mutate(Date = as.Date(Date, format = "%m/%d/%y")) %>% 
+  mutate(IsManualReport = as.factor(IsManualReport))
+```
+
+### Merging dataframes
+
+
+```{r}
+final_df <- merge(merge(daily_activity, daily_sleep, by = c('Id', 'Date'), all = TRUE), weight_log, by = c('Id', 'Date'), all = TRUE)
+str(final_df)
+```
+
+
+`TotalDistances` and `TrackerDistances` are identical hence we have to remove one of  them.
+
+```{r}
+final_df <- final_df %>% select(-c(TrackerDistance, LoggedActivitiesDistance, TotalSleepRecords, WeightPounds, Fat, BMI, IsManualReport))
+
+str(final_df)
+```
+
+```{r}
+summary(final_df)
+```
+
+## ANALYZE
+
+setting up colours for our visualization.
+
+```{r}
+custom_theme <- function() {
+  theme(
+    panel.border = element_rect(colour = "black", 
+                                fill = NA, 
+                                linetype = 1),
+    panel.background = element_rect(fill = "white", 
+                                    color = 'grey50'),
+    panel.grid.minor.y = element_blank(),
+    axis.text = element_text(colour = "black", 
+                             face = "italic", 
+                             family = "Helvetica"),
+    axis.title = element_text(colour = "black", 
+                              family = "Helvetica"),
+    axis.ticks = element_line(colour = "black"),
+    plot.title = element_text(size=23, 
+                              hjust = 0.5, 
+                              family = "Helvetica"),
+    plot.subtitle=element_text(size=16, 
+                               hjust = 0.5),
+    plot.caption = element_text(colour = "black", 
+                             face = "italic", 
+                             family = "Helvetica")
+  )
+}
+```
+
+
+
+
+### Sleep distribution
+
+```{r}
+# Distribution sleep time
+final_df %>% 
+  select(TotalMinutesAsleep) %>% 
+  drop_na() %>% 
+  mutate(sleep_quality = ifelse(TotalMinutesAsleep <= 420, 'Less than 7h',
+                         ifelse(TotalMinutesAsleep <= 540, '7h to 9h', 
+                         'More than 9h'))) %>%
+  mutate(sleep_quality = factor(sleep_quality, 
+                          levels = c('Less than 7h','7h to 9h',
+                                     'More than 9h'))) %>% 
+  ggplot(aes(x = TotalMinutesAsleep, fill = sleep_quality)) +
+  geom_histogram(position = 'dodge', bins = 30) +
+  custom_theme() +
+  scale_fill_manual(values=c("tan1", "#66CC99", "lightcoral")) +
+  theme(legend.position = c(.80, .80),
+        legend.title = element_blank(),
+        legend.spacing.y = unit(0, "mm"), 
+        panel.border = element_rect(colour = "black", fill=NA),
+        legend.background = element_blank(),
+        legend.box.background = element_rect(colour = "black")) +
+  labs(
+    title = "Sleep distribution",
+    x = "Time slept (minutes)",
+    y = "Count",
+    caption = 'Data Source: FitBit Fitness Tracker Data'
+  )
+```
+
+The distribution of sleep appears to follow a normaldistribution.
+
+#### calories burned by steps
+
+```{r}
+final_df %>% 
+  group_by(TotalSteps, Calories) %>% 
+  ggplot(aes(x = TotalSteps, y = Calories, color = Calories)) +
+  geom_point() +
+  geom_smooth() + 
+  custom_theme() +
+  theme(legend.position = c(.8, .3),
+        legend.spacing.y = unit(1, "mm"), 
+        panel.border = element_rect(colour = "black", fill=NA),
+        legend.background = element_blank(),
+        legend.box.background = element_rect(colour = "black")) +
+  labs(title = 'Calories burned by total steps taken',
+       y = 'Calories',
+       x = 'Total Steps',
+       caption = 'Data Source: FitBit Fitness Tracker Data')
+```
+
+
+
+The plot shows a positive correlation between the number of steps and calories burned. As the number of steps increase so the amount of calories.
+
+```{r}
+cor.test(final_df$TotalSteps, final_df$Calories, method = 'pearson', conf.level = 0.95)
+```
+
+
+
+
+### Intesity ofexercise 
+
+```{r}
+final_df %>% 
+  select(VeryActiveDistance, 
+         ModeratelyActiveDistance, 
+         LightActiveDistance) %>% 
+  summarise(across(everything(), list(sum))) %>% 
+  gather(activities, value) %>% 
+  mutate(ratio = value / sum(value),
+         label = percent(ratio %>% round(4))) %>% 
+mutate(activities = factor(activities, 
+                          labels = c('Light Activity','Moderate Activity', 'Heavy Activity'))) %>% 
+  ggplot(aes(x = (activities), 
+             y = value, 
+             label = label, 
+             fill = activities)) +
+  geom_bar(stat='identity') +
+  geom_label(aes(label = label), 
+             fill = "beige", 
+             colour = "black",
+             vjust = 0.5) +
+  custom_theme() +
+  scale_fill_brewer(palette="Accent") +
+  theme(legend.position="none") +
+  labs(
+    title = "Intensity of exercise activity",
+    x = "Activity level",
+    y = "Distance",
+    caption = 'Data Source: FitBit Fitness Tracker Data'
+  )
+```
+
+
+`light activity` is the most preferred
+
+
+
+### sleep quality by steps
+
+```{r}
+final_df %>% 
+  select(TotalMinutesAsleep, TotalSteps) %>% 
+  mutate(sleep_quality = ifelse(TotalMinutesAsleep <= 420, 'Less than 7h',
+                         ifelse(TotalMinutesAsleep <= 540, '7h to 9h', 
+                         'More than 9h'))) %>% 
+  mutate(active_level = ifelse(TotalSteps >= 15000,'More than 15,000 steps',
+                        ifelse(TotalSteps >= 10000,'10,000 to 14,999 steps',
+                        ifelse(TotalSteps >= 5000, '5,000 to 9,999 steps',
+                        'Less than 4,999 steps')))) %>% 
+  select(-c(TotalMinutesAsleep, TotalSteps)) %>% 
+  drop_na() %>% 
+  group_by(sleep_quality, active_level) %>% 
+  summarise(counts = n()) %>% 
+  mutate(active_level = factor(active_level, 
+                                levels = c('Less than 4,999 steps',
+                                           '5,000 to 9,999 steps',
+                                           '10,000 to 14,999 steps',
+                                           'More than 15,000 steps'))) %>% 
+  mutate(sleep_quality = factor(sleep_quality, 
+                          levels = c('Less than 7h','7h to 9h',
+                                     'More than 9h'))) %>% 
+  ggplot(aes(x = sleep_quality, 
+             y = counts, 
+             fill = sleep_quality)) +
+  geom_bar(stat = "identity") +
+  custom_theme() +
+  scale_fill_manual(values=c("tan1", "#66CC99", "lightcoral")) +
+  facet_wrap(~active_level, nrow = 1) +
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(strip.text = element_text(colour = 'black', size = 8)) +
+  theme(strip.background = element_rect(fill = "beige", color = 'black'))+
+  labs(
+    title = "Sleep quality by steps",
+    x = "Sleep quality",
+    y = "Count",
+    caption = 'Data Source: FitBit Fitness Tracker Data'
+  )
+```
+
+It seems that on average the best sleep is achieve when the total steps during the day are less than 9,999 steps.
+
+
+### weight vs distance covered 
+
+```{r}
+# Weight vs avg distances
+final_df %>% 
+  select(Id, WeightKg, TotalDistance) %>% 
+  group_by(Id) %>% 
+  summarise_all(list(~mean(., na.rm=TRUE))) %>% 
+  drop_na() %>% 
+  mutate(Id = factor(Id)) %>% 
+  ggplot(aes(WeightKg, TotalDistance, fill = Id)) +
+  geom_point(aes(color = Id, size = WeightKg), alpha = 0.5) +
+  scale_size(range = c(5, 20)) +
+  custom_theme() +
+  theme(legend.position = "none") +
+  labs(
+    title = "Weight (kg) vs distance covered",
+    x = "Kilograms",
+    y = "Total Distance",
+    caption = 'Data Source: FitBit Fitness Tracker Data'
+  )
+```
+
+
+
+In this sample, we can see that a majority of people are in good shape and are moving more than 5 miles. However, there is one outlier that moves very little and weighs significantly more than the rest.
+
+
+## SHARE
+
+### Recommendation 
+
+* Calories are burnt by the steps taken daily. Based on users’ objectives, Bellabeat could recommend a minimum number of steps for users to take to encorage them to achieve their goals.
+
+* In order to create a habit of exercising every day, Bellabeat could send a notification at a specific time for the user to remain consistent throughout the week.
+
+* The data shows that in order to sleep better the best type of exercise is light to moderate (less than 10,000 steps). Bellabeat could recommend this level of exercise for people who want to simply maintain a healthy lifestyle, i.e. don’t perform high-level sports.
+
+* Studies1 have shown that a routine before bed can help achieve a better sleep. Bellabeat could send a reminder to start that routine at a certain time and recommend activities to relax and improve sleep.
+
+* Bellabeat could also recommend some health and fitness articles within the Bellabeat app as a great way to motivate users.
+
